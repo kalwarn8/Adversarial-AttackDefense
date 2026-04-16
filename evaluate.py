@@ -8,7 +8,7 @@ from attacks.PGD import pgd_attack
 import matplotlib.pyplot as plt
 
 
-X_train, X_test, y_train, y_test = load_data("data/adult.data")
+X_train, X_test, y_train, y_test, feature_names = load_data("data/adult.data")
 
 X_test = torch.tensor(X_test, dtype=torch.float32)
 y_test = torch.tensor(y_test.values, dtype=torch.long)
@@ -30,7 +30,7 @@ print("Baseline Accuracy:", baseline_acc)
 
 
 # ---------- FGSM ATTACK ----------
-model.train()   # allow gradients
+model.eval()   # allow gradients
 
 X_fgsm = fgsm_attack(model, X_test.clone().detach(), y_test)
 

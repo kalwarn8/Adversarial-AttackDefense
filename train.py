@@ -6,7 +6,7 @@ from preprocessing import preprocessing
 from models.model import MLP
 
 
-X_train, X_test, y_train, y_test = preprocessing.load_data("data/adult.data")
+X_train, X_test, y_train, y_test, feature_names = preprocessing.load_data("data/adult.data")
 
 X_train = torch.tensor(X_train, dtype=torch.float32)
 y_train = torch.tensor(y_train.values, dtype=torch.long)
