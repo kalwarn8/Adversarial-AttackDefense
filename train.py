@@ -5,7 +5,7 @@ import torch.optim as optim
 from preprocessing import preprocessing
 from models.model import MLP
 
-
+# preprocessing now returns 5 values — added feature_names
 X_train, X_test, y_train, y_test, feature_names = preprocessing.load_data("data/adult.data")
 
 X_train = torch.tensor(X_train, dtype=torch.float32)
@@ -28,9 +28,9 @@ for epoch in range(epochs):
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    if (epoch+1) % 10 == 0:
+
+    if (epoch + 1) % 10 == 0:
         print(f"Epoch {epoch+1}/{epochs}, Loss: {loss.item():.4f}")
 
 torch.save(model.state_dict(), "model.pth")
-
 print("Training complete")

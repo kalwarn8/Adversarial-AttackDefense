@@ -1,10 +1,5 @@
 """
-attacks/constraints.py
-----------------------
 Defines which features are immutable, mutable-bounded, or direction-only.
-This directly addresses the professor's feedback:
-  "Define what realistic means quantitatively for your attacks."
-
 Three constraint types:
   IMMUTABLE   - cannot be changed at all (gender, race)
   BOUNDED     - can change but must stay within [min, max]

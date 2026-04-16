@@ -1,24 +1,17 @@
 """
-attacks/propagation.py
------------------------
 Milestone 3: Constraint-Aware Adversarial Attack with Feature Propagation.
 
-The idea (from the proposal):
-  When an attacker changes one feature, related features must shift too
-  to keep the record realistic. We model this using a feature dependency
-  graph built from correlation + mutual information on the training data.
+Feature dependency graph built from BOTH:
+  - Pearson Correlation  → captures linear relationships (numerical features)
+  - Mutual Information   → captures non-linear relationships (categorical features)
 
-  Perturbation on feature i  →  propagates to neighbor j
-  with weight proportional to the edge strength (correlation/MI).
-
-Professor feedback addressed:
-  - Constraints are enforced via constraints.py (immutable/bounded/direction)
-  - Propagation respects those same constraints after spreading
+Combined score = 0.5 * correlation + 0.5 * mutual_information
 """
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from sklearn.metrics import mutual_info_score
 from attacks.constraints import build_constraint_mask, apply_constraints
 
 
@@ -26,95 +19,113 @@ from attacks.constraints import build_constraint_mask, apply_constraints
 
 def build_dependency_graph(X_train_np, feature_names, corr_threshold=0.10):
     """
-    Builds a (n_features x n_features) adjacency matrix from training data.
+    Builds adjacency matrix using Pearson Correlation + Mutual Information.
 
-    For each pair (i, j):
-      - Computes absolute Pearson correlation
-      - Edge weight = correlation if >= corr_threshold, else 0
-
-    Args:
-        X_train_np      : np.ndarray, shape (N, F) — training data (scaled)
-        feature_names   : list of str, length F
-        corr_threshold  : minimum correlation to include an edge
+    Steps:
+      1. Pearson Correlation  — linear relationships
+      2. Mutual Information   — non-linear + categorical relationships
+      3. Combined 50/50       — complete picture of dependencies
 
     Returns:
-        adj : np.ndarray shape (F, F), values in [0, 1]
-              adj[i, j] = how strongly feature j should shift when i is perturbed
+        adj       : np.ndarray (F, F) — normalized adjacency for propagation
+        abs_corr  : np.ndarray (F, F) — raw correlation values
+        mi_matrix : np.ndarray (F, F) — raw MI values
     """
     n_features = X_train_np.shape[1]
-    adj = np.zeros((n_features, n_features), dtype=np.float32)
 
-    # Compute correlation matrix (handles NaN gracefully)
-    # np.corrcoef needs features as rows
+    # ── Step 1: Pearson Correlation ───────────────────────────────────────────
+    print(f"[Graph] Step 1/3 — Computing Pearson correlation...")
     with np.errstate(invalid="ignore", divide="ignore"):
-        corr_matrix = np.corrcoef(X_train_np.T)  # shape (F, F)
+        corr_matrix = np.corrcoef(X_train_np.T)
         corr_matrix = np.nan_to_num(corr_matrix, nan=0.0)
+    abs_corr = np.abs(corr_matrix).astype(np.float32)
+    np.fill_diagonal(abs_corr, 0.0)
 
-    abs_corr = np.abs(corr_matrix)
+    # ── Step 2: Mutual Information ────────────────────────────────────────────
+    # MI captures non-linear relationships that Pearson correlation misses.
+    # Especially important for one-hot categorical features like
+    # workclass, education, occupation — which are mutually exclusive.
+    print(f"[Graph] Step 2/3 — Computing Mutual Information...")
 
-    # Zero out weak edges and self-loops
-    adj = np.where(abs_corr >= corr_threshold, abs_corr, 0.0)
-    np.fill_diagonal(adj, 0.0)  # no self-propagation
+    # Discretize features into bins for MI computation
+    n_bins = 5
+    X_binned = np.zeros_like(X_train_np, dtype=int)
+    for i in range(n_features):
+        col = X_train_np[:, i]
+        bins = np.linspace(col.min(), col.max() + 1e-10, n_bins + 1)
+        X_binned[:, i] = np.digitize(col, bins) - 1
 
-    # Row-normalize so each row sums to ≤ 1
+    mi_matrix = np.zeros((n_features, n_features), dtype=np.float32)
+
+    # Only compute MI for pairs that already have weak correlation
+    # This avoids computing all 104x104 = 10816 pairs (too slow)
+    candidate_pairs = np.argwhere(abs_corr >= corr_threshold * 0.5)
+    for i, j in candidate_pairs:
+        if i >= j:
+            continue
+        mi = mutual_info_score(X_binned[:, i], X_binned[:, j])
+        mi_matrix[i, j] = mi
+        mi_matrix[j, i] = mi
+
+    # Normalize MI to [0, 1]
+    mi_max = mi_matrix.max()
+    if mi_max > 0:
+        mi_matrix = mi_matrix / mi_max
+
+    # ── Step 3: Combine correlation + MI 50/50 ───────────────────────────────
+    print(f"[Graph] Step 3/3 — Combining correlation + MI...")
+    combined = 0.5 * abs_corr + 0.5 * mi_matrix
+    np.fill_diagonal(combined, 0.0)
+
+    # Threshold and normalize
+    adj = np.where(combined >= corr_threshold, combined, 0.0).astype(np.float32)
+    np.fill_diagonal(adj, 0.0)
+
     row_sums = adj.sum(axis=1, keepdims=True)
-    row_sums = np.where(row_sums == 0, 1.0, row_sums)  # avoid div by zero
+    row_sums = np.where(row_sums == 0, 1.0, row_sums)
     adj = adj / row_sums
 
-    print(f"[Graph] Built dependency graph: {n_features} nodes, "
-          f"{(adj > 0).sum()} edges (threshold={corr_threshold})")
+    n_edges = (adj > 0).sum()
+    print(f"[Graph] Done!")
+    print(f"         Nodes     : {n_features} features")
+    print(f"         Edges     : {n_edges} connections")
+    print(f"         Method    : 50% Pearson correlation + 50% Mutual Information")
+    print(f"         Threshold : {corr_threshold}\n")
 
-    return adj
+    return adj, abs_corr, mi_matrix
 
+
+# ── 2. Propagate perturbation ─────────────────────────────────────────────────
 
 def propagate_perturbation(delta, adj, propagation_strength=0.5):
     """
-    Spreads a perturbation delta through the dependency graph.
+    Spreads perturbation delta through the dependency graph.
 
-    For each feature i that was perturbed, its neighbors j receive:
-        delta_j += propagation_strength * adj[i, j] * delta_i
-
-    Args:
-        delta                 : torch.Tensor shape (N, F)
-        adj                   : np.ndarray shape (F, F)
-        propagation_strength  : how much of the perturbation spreads (0–1)
-
-    Returns:
-        torch.Tensor shape (N, F) — propagated perturbation
+    When feature i is perturbed, neighbor j receives:
+        delta_j += propagation_strength * adj[i,j] * delta_i
     """
     adj_tensor = torch.tensor(adj, dtype=torch.float32)
-    # delta: (N, F) @ adj.T: (F, F) → (N, F)
     propagated = propagation_strength * torch.matmul(delta, adj_tensor)
     return delta + propagated
 
 
-# ── 2. Constraint-Aware FGSM with Propagation ─────────────────────────────────
+# ── 3. Propagated FGSM ───────────────────────────────────────────────────────
 
-def fgsm_propagated(model, X, y, epsilon=0.3,
+def fgsm_propagated(model, X, y, epsilon=0.5,
                     adj=None, feature_names=None,
                     propagation_strength=0.5):
     """
-    FGSM attack + feature dependency propagation + constraint enforcement.
+    FGSM + constraint mask + dependency propagation.
 
     Steps:
       1. Standard FGSM gradient step
-      2. Propagate perturbation through dependency graph
-      3. Enforce domain constraints (immutable, bounded, direction)
-
-    Args:
-        model                : trained PyTorch model
-        X                    : torch.Tensor (N, F), clean input
-        y                    : torch.Tensor (N,), true labels
-        epsilon              : perturbation magnitude
-        adj                  : dependency graph (F, F) np.ndarray
-        feature_names        : list of feature names for constraint enforcement
-        propagation_strength : how strongly perturbation spreads
-
-    Returns:
-        perturbed X as torch.Tensor (N, F)
+      2. Apply constraint mask — freeze immutable features (sex, race)
+      3. Propagate through dependency graph (corr + MI)
+      4. Apply domain constraints (clip age, hours etc.)
     """
     X_in = X.clone().detach().requires_grad_(True)
 
+    model.eval()
     outputs = model(X_in)
     loss = F.cross_entropy(outputs, y)
     model.zero_grad()
@@ -123,12 +134,12 @@ def fgsm_propagated(model, X, y, epsilon=0.3,
     grad = X_in.grad.data
     delta = epsilon * grad.sign()
 
-    # Apply constraint mask — zero out immutable features
+    # Freeze immutable features
     if feature_names is not None:
         mask = build_constraint_mask(feature_names)
         delta = delta * mask
 
-    # Propagate through dependency graph
+    # Propagate through graph
     if adj is not None:
         delta = propagate_perturbation(delta, adj, propagation_strength)
 
@@ -141,53 +152,22 @@ def fgsm_propagated(model, X, y, epsilon=0.3,
     return perturbed.detach()
 
 
-# ── 3. Constraint-Aware PGD with Propagation ──────────────────────────────────
+# ── 4. Propagated PGD ────────────────────────────────────────────────────────
 
-def pgd_propagated(model, X, y, epsilon=0.2, alpha=0.02, iters=10,
+def pgd_propagated(model, X, y, epsilon=0.4, alpha=0.04, iters=20,
                    adj=None, feature_names=None,
-                   propagation_strength=0.5):
+                   propagation_strength=0.3):
     """
-    PGD attack + feature dependency propagation + constraint enforcement.
+    PGD + constraint mask + dependency propagation.
 
-    At each iteration:
-      1. Gradient step (alpha)
-      2. Propagate perturbation
-      3. Project back into epsilon-ball
-      4. Enforce domain constraints
-
-    Args:
-        model                : trained PyTorch model
-        X                    : torch.Tensor (N, F)
-        y                    : torch.Tensor (N,)
-        epsilon              : max total perturbation
-        alpha                : step size per iteration
-        iters                : number of PGD steps
-        adj                  : dependency graph np.ndarray (F, F)
-        feature_names        : list of feature names
-        propagation_strength : spread factor
-
-    Returns:
-        perturbed X as torch.Tensor (N, F)
-    """
-def pgd_propagated(model, X, y, epsilon=0.2, alpha=0.02, iters=10,
-                   adj=None, feature_names=None,
-                   propagation_strength=0.5):
-    """
-    PGD attack + feature dependency propagation + constraint enforcement.
-
-    Key design decision:
-      - Run standard PGD iterations to find the strongest adversarial direction
-      - Apply propagation ONCE at the end to the total accumulated delta
-      - Apply constraints ONCE at the end
-      
-    Propagating inside every iteration dilutes the attack because
-    spreading perturbations across many features reduces the gradient
-    signal at each step. Propagating the final delta once preserves
-    attack strength while still making perturbations realistic.
+    Design: run full PGD first to find strongest direction,
+    then propagate the final accumulated delta ONCE through graph.
+    Propagating inside each iteration dilutes the attack.
     """
     perturbed = X.clone().detach()
+    model.eval()
 
-    # Step 1: Run standard PGD to find strongest perturbation direction
+    # Step 1: Run full PGD
     for _ in range(iters):
         perturbed.requires_grad_(True)
 
@@ -199,27 +179,23 @@ def pgd_propagated(model, X, y, epsilon=0.2, alpha=0.02, iters=10,
         grad = perturbed.grad.data
         step = alpha * grad.sign()
 
-        # Zero out immutable features at every step
+        # Freeze immutable features at every step
         if feature_names is not None:
             mask = build_constraint_mask(feature_names)
             step = step * mask
 
         perturbed = perturbed.detach() + step
-
-        # Project back into epsilon-ball
         eta = torch.clamp(perturbed - X, min=-epsilon, max=epsilon)
         perturbed = (X + eta).detach()
 
-    # Step 2: Get the total accumulated delta from PGD
+    # Step 2: Propagate final delta ONCE
     total_delta = perturbed - X
-
-    # Step 3: Propagate the FINAL delta through dependency graph (once)
     if adj is not None:
         total_delta = propagate_perturbation(total_delta, adj, propagation_strength)
 
     perturbed = X + total_delta
 
-    # Step 4: Apply domain constraints once at the very end
+    # Step 3: Apply constraints once at the end
     if feature_names is not None:
         perturbed = apply_constraints(perturbed, X, feature_names)
 

@@ -1,9 +1,4 @@
 """
-test_propagation.py
---------------------
-Run this FIRST to verify the dependency graph and propagated
-attack work correctly before running the full evaluate.py.
-
 What this script does step by step:
   1. Loads the UCI Adult dataset
   2. Builds the feature dependency graph
@@ -12,8 +7,6 @@ What this script does step by step:
   5. Compares accuracy: standard FGSM vs propagated FGSM
   6. Shows a sample of what actually changed in the features
 
-Run with:
-    python test_propagation.py
 """
 
 import torch
@@ -59,7 +52,7 @@ def main():
     print("="*60)
     print("  Computing Pearson correlations between all feature pairs...")
 
-    adj = build_dependency_graph(X_train, feature_names, corr_threshold=0.10)
+    adj, abs_corr, mi_matrix = build_dependency_graph(X_train, feature_names, corr_threshold=0.10)
 
     # Show top 10 strongest feature relationships
     print("\n  Top 10 strongest feature dependencies:")
@@ -120,7 +113,7 @@ def main():
     # Propagated FGSM (with dependency graph + constraints)
     X_prop_fgsm = fgsm_propagated(
         model, X_test_t.clone(), y_test_t,
-        epsilon=0.3,
+        epsilon=0.5,
         adj=adj,
         feature_names=feature_names,
         propagation_strength=0.5

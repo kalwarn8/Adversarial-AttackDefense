@@ -1,20 +1,12 @@
-"""
-preprocessing/preprocessing.py  (updated)
-------------------------------------------
-Same as before, but now returns feature_names as a 5th return value.
-This is needed by constraints.py and propagation.py.
-"""
-
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
-
 
 def load_data(train_path="data/adult.data", test_path="data/adult.test"):
 
     columns = [
-        "age", "workclass", "fnlwgt", "education", "education-num",
-        "marital-status", "occupation", "relationship", "race", "sex",
-        "capital-gain", "capital-loss", "hours-per-week", "native-country", "income"
+        "age","workclass","fnlwgt","education","education-num",
+        "marital-status","occupation","relationship","race","sex",
+        "capital-gain","capital-loss","hours-per-week","native-country","income"
     ]
 
     train_data = pd.read_csv(train_path, names=columns, na_values=" ?")
@@ -38,7 +30,7 @@ def load_data(train_path="data/adult.data", test_path="data/adult.test"):
     X_train = X_all.iloc[:len(X_train)]
     X_test  = X_all.iloc[len(X_train):]
 
-    # Save feature names BEFORE scaling (needed for constraints + propagation)
+    # Save feature names BEFORE scaling — needed by constraints + propagation
     feature_names = list(X_train.columns)
 
     scaler  = StandardScaler()
@@ -51,5 +43,5 @@ def load_data(train_path="data/adult.data", test_path="data/adult.test"):
     print(f"Testing samples  : {X_test.shape[0]}")
     print(f"Features         : {X_train.shape[1]}")
 
-    # Return 5 values now (added feature_names)
+    # Returns 5 values now — feature_names is the new addition
     return X_train, X_test, y_train, y_test, feature_names
