@@ -118,7 +118,7 @@ Architecture:
 
 ---
 
-## Bug Fix (Professor Feedback)
+## Bug Fix
 
 Original `evaluate.py` called `model.train()` before FGSM attack, activating dropout during gradient computation. This produced inconsistent gradients and unreliable accuracy numbers.
 
