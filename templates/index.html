@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adversarial Robustness Demo — Team Immortals</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #F5F0E8;  --navy: #1B2A4A;
+  --blue:  #2563EB;  --red:  #DC2626;
+  --green: #16A34A;  --amber:#D97706;
+  --border:#E2DDD4;  --muted:#78716C;
+  --lgray: #F3F4F6;  --white:#FFFFFF;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body {
+  font-family:'DM Sans',sans-serif;
+  background:var(--cream); color:var(--navy);
+  min-height:100vh; display:flex; flex-direction:column;
+}
+
+/* ── Header ── */
+header {
+  background:var(--navy); height:54px; padding:0 2rem;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.h-logo { font-family:'Playfair Display',serif; font-size:1.1rem; color:#CADCFC; }
+.h-tag  { font-size:0.72rem; color:#7A90BB; }
+
+/* ── Main ── */
+main {
+  flex:1; max-width:900px; margin:0 auto;
+  width:100%; padding:2.5rem 1.5rem;
+}
+.demo-title {
+  font-family:'Playfair Display',serif;
+  font-size:1.8rem; font-weight:700; color:var(--navy);
+  text-align:center; line-height:1.2; margin-bottom:0.4rem;
+}
+.demo-sub {
+  font-size:0.88rem; color:var(--muted);
+  text-align:center; margin-bottom:2.2rem;
+}
+
+/* ── Big run button ── */
+.run-wrap { text-align:center; margin-bottom:2.5rem; }
+.run-btn {
+  background:var(--navy); color:#fff; border:none;
+  border-radius:12px; padding:1rem 3rem;
+  font-size:1.1rem; font-weight:700;
+  font-family:'DM Sans',sans-serif;
+  cursor:pointer; transition:all 0.2s;
+  display:inline-flex; align-items:center; gap:0.7rem;
+}
+.run-btn:hover:not(:disabled) {
+  background:var(--blue); transform:translateY(-2px);
+  box-shadow:0 6px 20px rgba(37,99,235,0.35);
+}
+.run-btn:disabled { background:#94A3B8; cursor:not-allowed; transform:none; }
+.run-btn .spin {
+  width:20px; height:20px;
+  border:2.5px solid rgba(255,255,255,0.3); border-top-color:#fff;
+  border-radius:50%; animation:spin 0.7s linear infinite; display:none;
+}
+.run-btn.busy .spin { display:block; }
+.run-btn.busy .btxt { display:none; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ── Section label ── */
+.sec-label {
+  font-size:0.65rem; font-weight:700; letter-spacing:0.12em;
+  text-transform:uppercase; color:var(--muted);
+  margin-bottom:0.8rem; display:flex; align-items:center; gap:0.6rem;
+}
+.sec-label::after { content:''; flex:1; height:1px; background:var(--border); }
+
+/* ── PERSON CARD ── */
+.person-section { margin-bottom:2rem; }
+.person-box {
+  background:var(--white); border:1px solid var(--border);
+  border-radius:16px; overflow:hidden;
+  box-shadow:0 2px 12px rgba(0,0,0,0.05);
+}
+.person-top {
+  background:var(--lgray); padding:1.2rem 1.5rem;
+  display:flex; align-items:center; gap:1rem;
+}
+.person-avatar {
+  width:54px; height:54px; border-radius:50%;
+  background:var(--navy); display:flex; align-items:center;
+  justify-content:center; font-size:1.6rem; flex-shrink:0;
+}
+.person-info h3 { font-size:1rem; font-weight:700; color:var(--navy); }
+.person-info p  { font-size:0.8rem; color:var(--muted); margin-top:0.15rem; }
+
+.person-fields {
+  display:grid; grid-template-columns:repeat(4,1fr);
+  border-top:1px solid var(--border);
+}
+.pf {
+  padding:0.85rem 1rem; border-right:1px solid var(--border);
+  text-align:center;
+}
+.pf:last-child { border-right:none; }
+.pf-icon { font-size:1.3rem; margin-bottom:0.25rem; }
+.pf-val  { font-size:0.92rem; font-weight:600; color:var(--navy); }
+.pf-key  { font-size:0.68rem; color:var(--muted); margin-top:0.1rem; letter-spacing:0.04em; text-transform:uppercase; }
+
+/* ── PREDICTION FLOW ── */
+.pred-flow {
+  display:grid; grid-template-columns:1fr auto 1fr auto 1fr;
+  align-items:center; gap:0;
+  border:1.5px solid var(--border); border-radius:14px;
+  overflow:hidden; margin-top:1rem;
+}
+.pred-card {
+  padding:1.3rem 1rem; text-align:center;
+  transition:all 0.4s ease; opacity:0.35;
+}
+.pred-card.active { opacity:1; }
+.pred-card.c-normal  { background:#EFF6FF; }
+.pred-card.c-attack  { background:#FEF2F2; }
+.pred-card.c-defense { background:#F0FDF4; }
+.pred-state {
+  font-size:0.6rem; font-weight:700; letter-spacing:0.1em;
+  text-transform:uppercase; margin-bottom:0.5rem;
+}
+.pred-state.s1 { color:var(--blue); }
+.pred-state.s2 { color:var(--red);  }
+.pred-state.s3 { color:var(--green);}
+.pred-icon  { font-size:2rem; margin:0.3rem 0; }
+.pred-label { font-size:1.05rem; font-weight:700; margin:0.2rem 0; }
+.lbl-high { color:var(--green); }
+.lbl-low  { color:var(--red);   }
+.lbl-none { color:var(--muted); }
+.pred-conf { font-size:0.75rem; color:var(--muted); }
+
+.pred-arrow {
+  padding:0 0.5rem; text-align:center;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:0.2rem;
+}
+.arrow-line {
+  width:36px; height:2px; border-radius:1px;
+}
+.arrow-atk  { background:#FECACA; }
+.arrow-def  { background:#86EFAC; }
+.arrow-text {
+  font-size:0.6rem; font-weight:700; letter-spacing:0.06em;
+  text-transform:uppercase;
+}
+.arrow-atk-txt  { color:#991B1B; }
+.arrow-def-txt  { color:#166534; }
+
+/* verdict badge */
+.pred-verdict {
+  display:inline-block; font-size:0.72rem; font-weight:600;
+  padding:0.2rem 0.55rem; border-radius:20px; margin-top:0.45rem;
+}
+.v-normal  { background:#DBEAFE; color:#1E40AF; }
+.v-flipped { background:#FEE2E2; color:#991B1B; }
+.v-held    { background:#FEF3C7; color:#92400E; }
+.v-defense { background:#DCFCE7; color:#166534; }
+.v-lost    { background:#FEE2E2; color:#991B1B; }
+
+/* ── WHAT CHANGED ── */
+.changes-section { margin-top:2rem; }
+.changes-grid {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:0.7rem;
+}
+.change-card {
+  border-radius:10px; padding:0.85rem 0.9rem;
+  display:flex; flex-direction:column; align-items:center;
+  text-align:center; gap:0.3rem;
+  transition:all 0.3s ease; opacity:0; transform:translateY(8px);
+}
+.change-card.show { opacity:1; transform:none; }
+.change-card.up   { background:#FFFBEB; border:1px solid #FDE68A; }
+.change-card.down { background:#EFF6FF; border:1px solid #BFDBFE; }
+.cc-icon  { font-size:1.4rem; }
+.cc-name  { font-size:0.78rem; font-weight:600; color:var(--navy); }
+.cc-dir   {
+  font-size:0.68rem; font-weight:700; padding:0.15rem 0.5rem;
+  border-radius:20px;
+}
+.dir-up   { background:#FEF3C7; color:#92400E; }
+.dir-down { background:#DBEAFE; color:#1E40AF; }
+
+/* Protected box */
+.protected-box {
+  margin-top:0.8rem;
+  background:#FEF2F2; border:1px solid #FECACA;
+  border-radius:10px; padding:0.9rem 1.1rem;
+  display:flex; align-items:center; gap:0.8rem;
+}
+.pb-icon { font-size:1.5rem; flex-shrink:0; }
+.pb-text {}
+.pb-title { font-size:0.82rem; font-weight:700; color:#991B1B; }
+.pb-list  { font-size:0.78rem; color:#7F1D1D; margin-top:0.2rem; line-height:1.7; }
+
+/* ── ACCURACY BARS ── */
+.bars-section { margin-top:2rem; }
+.bar-row {
+  display:flex; align-items:center; gap:1rem; margin-bottom:1.2rem;
+}
+.bar-meta { width:170px; flex-shrink:0; }
+.bar-state { font-size:0.6rem; font-weight:700; letter-spacing:0.08em;
+  text-transform:uppercase; margin-bottom:0.15rem; }
+.bar-name  { font-size:0.9rem; font-weight:600; color:var(--navy); }
+.bar-desc  { font-size:0.72rem; color:var(--muted); }
+
+.bar-track {
+  flex:1; height:46px; background:#EDE8DE;
+  border-radius:10px; overflow:hidden; position:relative;
+}
+.bar-fill {
+  height:100%; border-radius:10px; width:0%;
+  transition:width 1.2s cubic-bezier(0.4,0,0.2,1);
+  display:flex; align-items:center; justify-content:flex-end;
+  padding-right:14px;
+}
+.bf-1 { background:linear-gradient(90deg,#1D4ED8,#3B82F6); }
+.bf-2 { background:linear-gradient(90deg,#991B1B,#DC2626); }
+.bf-3 { background:linear-gradient(90deg,#14532D,#16A34A); }
+.bar-pct {
+  font-size:1.2rem; font-weight:700; color:#fff;
+  opacity:0; transition:opacity 0.3s ease 0.9s;
+}
+.bar-pct.show { opacity:1; }
+.bar-delta {
+  width:70px; flex-shrink:0; text-align:center;
+  font-size:0.9rem; font-weight:700;
+  opacity:0; transition:opacity 0.4s ease 1s;
+}
+.bar-delta.show { opacity:1; }
+.d-drop { color:var(--red);   }
+.d-rise { color:var(--green); }
+.bar-divider {
+  display:flex; align-items:center; gap:0.7rem;
+  margin:0.3rem 0 1rem; padding-left:172px;
+}
+.bd-line  { flex:1; height:1px; background:var(--border); }
+.bd-label { font-size:0.65rem; font-weight:600; color:var(--muted);
+  letter-spacing:0.06em; text-transform:uppercase; white-space:nowrap; }
+
+/* ── Story box ── */
+.story-box {
+  background:linear-gradient(135deg,#1B2A4A,#1e3a6e);
+  border-radius:14px; padding:1.4rem 1.8rem; margin-top:1.8rem;
+  display:none;
+}
+.story-box.show { display:block; animation:fadeUp 0.4s ease; }
+.story-lbl { font-size:0.62rem; font-weight:700; letter-spacing:0.1em;
+  text-transform:uppercase; color:#6EE7B7; margin-bottom:0.6rem; }
+.story-txt { font-size:0.92rem; color:#CADCFC; line-height:1.8; }
+.story-txt strong { color:#7AC0FF; }
+.hl-r { color:#FCA5A5; font-weight:600; }
+.hl-g { color:#6EE7B7; font-weight:600; }
+
+@keyframes fadeUp {
+  from { opacity:0; transform:translateY(8px); }
+  to   { opacity:1; transform:none; }
+}
+
+footer {
+  text-align:center; padding:1rem;
+  font-size:0.72rem; color:var(--muted);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-logo">🛡️ Adversarial Robustness Demo</div>
+  <div class="h-tag">Team Immortals · Shaan Thakkar &amp; Neel Kalwar · Secure and Private AI</div>
+</header>
+
+<main>
+  <h1 class="demo-title">Can we fool an income classifier?</h1>
+  <p class="demo-sub">A real person from the dataset · Propagated FGSM attack · Adversarial Training defense</p>
+
+  <!-- Big button -->
+  <div class="run-wrap">
+    <button class="run-btn" id="run-btn" onclick="runDemo()" disabled>
+      <div class="spin"></div>
+      <span class="btxt">⏳ Loading…</span>
+    </button>
+  </div>
+
+  <!-- Person section -->
+  <div class="person-section">
+    <div class="sec-label">The Person</div>
+    <div class="person-box">
+      <div class="person-top">
+        <div class="person-avatar" id="p-avatar">👤</div>
+        <div class="person-info">
+          <h3 id="p-name">Loading…</h3>
+          <p  id="p-sub">—</p>
+        </div>
+      </div>
+      <div class="person-fields">
+        <div class="pf"><div class="pf-icon">🎓</div><div class="pf-val" id="pf-edu">—</div><div class="pf-key">Education</div></div>
+        <div class="pf"><div class="pf-icon">⏰</div><div class="pf-val" id="pf-hrs">—</div><div class="pf-key">Hrs / Week</div></div>
+        <div class="pf"><div class="pf-icon">💰</div><div class="pf-val" id="pf-cap">—</div><div class="pf-key">Capital Gain</div></div>
+        <div class="pf"><div class="pf-icon">💍</div><div class="pf-val" id="pf-mar">—</div><div class="pf-key">Marital Status</div></div>
+      </div>
+
+      <!-- Prediction flow -->
+      <div class="pred-flow" style="border-top:1px solid var(--border); border-radius:0;">
+        <!-- State 1 -->
+        <div class="pred-card c-normal" id="pc1">
+          <div class="pred-state s1">Step 1 · Normal</div>
+          <div class="pred-icon" id="pi1">🏦</div>
+          <div class="pred-label lbl-none" id="pl1">—</div>
+          <div class="pred-conf"  id="pconf1"></div>
+          <span class="pred-verdict v-normal" id="pv1">Baseline model</span>
+        </div>
+
+        <!-- Arrow: attack -->
+        <div class="pred-arrow">
+          <div class="arrow-line arrow-atk"></div>
+          <div class="arrow-text arrow-atk-txt">⚡ Attack</div>
+          <div class="arrow-line arrow-atk"></div>
+        </div>
+
+        <!-- State 2 -->
+        <div class="pred-card c-attack" id="pc2">
+          <div class="pred-state s2">Step 2 · Attacked</div>
+          <div class="pred-icon" id="pi2">❓</div>
+          <div class="pred-label lbl-none" id="pl2">—</div>
+          <div class="pred-conf"  id="pconf2"></div>
+          <span class="pred-verdict v-held" id="pv2">Prop-FGSM · ε=0.5</span>
+        </div>
+
+        <!-- Arrow: defense -->
+        <div class="pred-arrow">
+          <div class="arrow-line arrow-def"></div>
+          <div class="arrow-text arrow-def-txt">🛡️ Defense</div>
+          <div class="arrow-line arrow-def"></div>
+        </div>
+
+        <!-- State 3 -->
+        <div class="pred-card c-defense" id="pc3">
+          <div class="pred-state s3">Step 3 · Defended</div>
+          <div class="pred-icon" id="pi3">❓</div>
+          <div class="pred-label lbl-none" id="pl3">—</div>
+          <div class="pred-conf"  id="pconf3"></div>
+          <span class="pred-verdict v-normal" id="pv3">Robust model</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- What changed -->
+  <div class="changes-section" id="
+  -section" style="display:none">
+    <div class="sec-label">What the attack changed</div>
+    <div class="changes-grid" id="changes-grid"></div>
+    <div class="protected-box" style="margin-top:0.8rem">
+      <div class="pb-icon">🔒</div>
+      <div class="pb-text">
+        <div class="pb-title">These features were NEVER changed — protected by our constraint mask</div>
+        <div class="pb-list">
+          <strong>Sex</strong> &nbsp;·&nbsp; <strong>Race</strong> &nbsp;·&nbsp;
+          <strong>Native Country</strong> &nbsp;·&nbsp;
+          Age can only increase · Education can only increase
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Accuracy bars -->
+  <div class="bars-section">
+    <div class="sec-label">Overall Model Accuracy — Full Test Set (15,060 samples)</div>
+
+    <div class="bar-row">
+      <div class="bar-meta">
+        <div class="bar-state" style="color:var(--blue)">State 1</div>
+        <div class="bar-name">Normal Service</div>
+        <div class="bar-desc">Baseline model · clean data</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill bf-1" id="bar1"><span class="bar-pct" id="pct1"></span></div></div>
+      <div class="bar-delta" id="d1"></div>
+    </div>
+
+    <div class="bar-divider">
+      <div class="bd-line"></div><div class="bd-label">↓ Propagated FGSM attack applied</div><div class="bd-line"></div>
+    </div>
+
+    <div class="bar-row">
+      <div class="bar-meta">
+        <div class="bar-state" style="color:var(--red)">State 2</div>
+        <div class="bar-name">Under Attack</div>
+        <div class="bar-desc">Same model · adversarial input</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill bf-2" id="bar2"><span class="bar-pct" id="pct2"></span></div></div>
+      <div class="bar-delta" id="d2"></div>
+    </div>
+
+    <div class="bar-divider">
+      <div class="bd-line"></div><div class="bd-label">↓ Adversarial training defense applied</div><div class="bd-line"></div>
+    </div>
+
+    <div class="bar-row">
+      <div class="bar-meta">
+        <div class="bar-state" style="color:var(--green)">State 3</div>
+        <div class="bar-name">After Defense</div>
+        <div class="bar-desc">Robust model · same attack</div>
+      </div>
+      <div class="bar-track"><div class="bar-fill bf-3" id="bar3"><span class="bar-pct" id="pct3"></span></div></div>
+      <div class="bar-delta" id="d3"></div>
+    </div>
+  </div>
+
+  <!-- Story text -->
+  <div class="story-box" id="story">
+    <div class="story-lbl">🎤 Summary</div>
+    <div class="story-txt" id="story-txt"></div>
+  </div>
+
+</main>
+
+<footer>Flask + PyTorch · Real model predictions · UCI Adult Income Dataset · 15,060 test samples</footer>
+
+<script>
+let D = null;  // all data from server
+
+// ── Bar animation ─────────────────────────────────────────────────────────────
+function bar(id, pctId, deltaId, pct, delay, dText, dClass) {
+  setTimeout(() => {
+    document.getElementById(id).style.width = pct + '%';
+    setTimeout(() => {
+      const p = document.getElementById(pctId);
+      p.textContent = pct + '%'; p.classList.add('show');
+    }, 950);
+    if (dText) {
+      setTimeout(() => {
+        const d = document.getElementById(deltaId);
+        d.textContent = dText; d.className = 'bar-delta show ' + dClass;
+      }, 1100);
+    }
+  }, delay);
+}
+
+// ── Prediction card ───────────────────────────────────────────────────────────
+function setPred(n, data, verdict, verdictClass) {
+  const card = document.getElementById('pc' + n);
+  card.classList.add('active');
+  const income = data.income;
+  document.getElementById('pi' + n).textContent  = income ? '💼' : '🚫';
+  const lbl = document.getElementById('pl' + n);
+  lbl.textContent = income ? 'Earns >$50K' : 'Earns ≤$50K';
+  lbl.className   = 'pred-label ' + (income ? 'lbl-high' : 'lbl-low');
+  document.getElementById('pconf' + n).textContent = 'Confidence: ' + data.conf + '%';
+  const v = document.getElementById('pv' + n);
+  v.textContent = verdict; v.className = 'pred-verdict ' + verdictClass;
+}
+
+// ── Load person info on page open ─────────────────────────────────────────────
+async function loadPerson() {
+  try {
+    const r = await fetch('/api/demo');
+    D = await r.json();
+    const p = D.person;
+
+    // Avatar & name
+    document.getElementById('p-avatar').textContent = p.sex === 'Male' ? '👨' : '👩';
+    document.getElementById('p-name').textContent   = `${p.age}-year-old ${p.sex}`;
+    document.getElementById('p-sub').textContent    = `${p.occupation} · ${p.workclass}`;
+
+    // Fields
+    document.getElementById('pf-edu').textContent = p.education;
+    document.getElementById('pf-hrs').textContent = p.hours + ' hrs';
+    document.getElementById('pf-cap').textContent = p.capital_gain > 0 ? '$' + p.capital_gain.toLocaleString() : '$0';
+    document.getElementById('pf-mar').textContent = p.marital.replace('civ spouse','married').replace('Never married','Single');
+
+    // Enable button
+    const btn = document.getElementById('run-btn');
+    btn.disabled = false;
+    btn.querySelector('.btxt').textContent = '▶   Run the Attack & Defense';
+
+    // Show baseline prediction immediately
+    setPred(1, D.pred_clean, 'Baseline model', 'v-normal');
+    bar('bar1','pct1','d1', D.acc_baseline, 400, null, null);
+
+  } catch(e) {
+    document.getElementById('run-btn').querySelector('.btxt').textContent = '⚠️ Server not responding';
+  }
+}
+
+// ── Main demo ─────────────────────────────────────────────────────────────────
+function runDemo() {
+  if (!D) return;
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true;
+  btn.classList.add('busy');
+
+  // Reset cards 2 and 3
+  ['pc2','pc3'].forEach(id => document.getElementById(id).classList.remove('active'));
+  ['pi2','pi3'].forEach(id => document.getElementById(id).textContent = '❓');
+  ['pl2','pl3'].forEach(id => { document.getElementById(id).textContent='—'; document.getElementById(id).className='pred-label lbl-none'; });
+  ['pconf2','pconf3'].forEach(id => document.getElementById(id).textContent = '');
+  // Reset bars 2 and 3
+  ['bar2','bar3'].forEach(id => document.getElementById(id).style.width = '0%');
+  ['pct2','pct3'].forEach(id => { document.getElementById(id).textContent=''; document.getElementById(id).classList.remove('show'); });
+  ['d2','d3'].forEach(id => document.getElementById(id).className = 'bar-delta');
+  document.getElementById('story').classList.remove('show');
+  document.getElementById('changes-section').style.display = 'none';
+
+  // ── Step 1: Already showing ──
+  // ── Step 2: Attack (0.8s delay) ──
+  setTimeout(() => {
+    const flipped = D.flipped;
+    setPred(2, D.pred_attack,
+      flipped ? '⚠️ Prediction FLIPPED!' : '🟡 Held this time',
+      flipped ? 'v-flipped' : 'v-held'
+    );
+  }, 800);
+
+  const drop = (D.acc_attacked - D.acc_baseline).toFixed(1);
+  bar('bar2','pct2','d2', D.acc_attacked, 1000,
+    drop + 'pp', Number(drop) < 0 ? 'd-drop' : 'd-rise');
+
+  // ── Step 3: Defense (2.2s delay) ──
+  setTimeout(() => {
+    if (D.pred_robust) {
+      const rec = D.recovered;
+      setPred(3, D.pred_robust,
+        rec ? '🛡️ Defense held!' : '⚠️ Attack won this sample',
+        rec ? 'v-defense' : 'v-lost'
+      );
+    } else {
+      document.getElementById('pc3').classList.add('active');
+      document.getElementById('pi3').textContent = '⚠️';
+      document.getElementById('pl3').textContent = 'No robust model';
+      document.getElementById('pv3').textContent = 'Run adversarial_train.py';
+    }
+  }, 2200);
+
+  if (D.has_robust && D.acc_defended) {
+    const rise = (D.acc_defended - D.acc_attacked).toFixed(1);
+    bar('bar3','pct3','d3', D.acc_defended, 2400,
+      '+' + rise + 'pp', 'd-rise');
+  }
+
+  // ── Feature changes (3.2s delay) ──
+  setTimeout(() => {
+    const grid = document.getElementById('changes-grid');
+    grid.innerHTML = D.changes.map((c, i) => `
+      <div class="change-card ${c.up ? 'up' : 'down'}" style="transition-delay:${i*0.07}s">
+        <div class="cc-icon">${c.icon}</div>
+        <div class="cc-name">${c.label}</div>
+        <span class="cc-dir ${c.up ? 'dir-up' : 'dir-down'}">${c.dir}</span>
+      </div>`).join('');
+    document.getElementById('changes-section').style.display = 'block';
+    setTimeout(() => {
+      document.querySelectorAll('.change-card').forEach(c => c.classList.add('show'));
+    }, 50);
+  }, 3200);
+
+  // ── Story text (4.2s delay) ──
+  setTimeout(() => {
+    const b = D.acc_baseline, a = D.acc_attacked, def = D.acc_defended;
+    const drop  = Math.abs(b - a).toFixed(1);
+    const recov = def ? Math.abs(def - a).toFixed(1) : null;
+    const flip  = D.flipped;
+    const rec   = D.recovered;
+
+    let txt = `
+      <strong>State 1 — Normal Service:</strong>
+      The baseline model correctly predicts
+      <span class="${D.pred_clean.income ? 'hl-g' : 'hl-r'}">${D.pred_clean.income ? 'this person earns >$50K' : 'this person earns ≤$50K'}</span>
+      with ${D.pred_clean.conf}% confidence.
+      On the full test set, it achieves <strong>${b}% accuracy</strong>.
+      <br><br>
+      <strong>State 2 — Under Attack (Propagated FGSM, ε=0.5):</strong>
+      ${flip
+        ? `The attack <span class="hl-r">flipped the prediction</span> the model now wrongly classifies this person.`
+        : `The prediction held for this specific sample but across the full test set, accuracy drops to <span class="hl-r">${a}%</span>.`}
+      Overall accuracy drops from ${b}% to <span class="hl-r">${a}%</span>
+      a <span class="hl-r">${drop} percentage point drop</span>.
+      The attack only changed realistic features <strong>sex and race were never touched</strong>.
+      <br><br>
+      <strong>State 3 - After Defense (Adversarial Training):</strong>
+      ${D.has_robust
+        ? `The robust model ${rec ? '<span class="hl-g">correctly recovers</span>' : 'also struggles on this sample but'} across the full test set, accuracy recovers to <span class="hl-g">${def}%</span>, a <span class="hl-g">+${recov} percentage point recovery</span>. Clean accuracy stays at <strong>${b}%</strong> the defense costs almost nothing on normal data.`
+        : 'Run adversarial_train.py to generate the robust model and see the defense.'}`;
+
+    document.getElementById('story-txt').innerHTML = txt;
+    document.getElementById('story').classList.add('show');
+
+    btn.disabled = false;
+    btn.classList.remove('busy');
+    btn.querySelector('.btxt').textContent = '↺   Run Again';
+  }, 4200);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadPerson();
+</script>
+</body>
+</html>
