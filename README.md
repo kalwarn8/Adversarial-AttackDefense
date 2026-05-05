@@ -1,14 +1,33 @@
-# Adversarial-AttackDefense
-# Secure and Private AI
-## Adversarial Robustness of an MLP on the Adult Income Dataset
+# Adversarial Robustness on Tabular Data
+### Secure and Private AI — Team Immortals
+**Shaan Thakkar & Neel Kalwar · Georgia State University · 2026**
 
 ---
 
-## Project Overview
+## Overview
 
-This project investigates the robustness of a machine learning model against adversarial attacks, with a focus on **realistic, constraint-aware attacks** for tabular data.
+This project investigates adversarial robustness of a neural network on **tabular data**, with a focus on building **realistic, constraint-aware attacks** that a real-world adversary could actually execute.
 
-A Multi-Layer Perceptron (MLP) neural network is trained on the UCI Adult Income dataset to predict whether an individual's income exceeds $50K per year. The model is then evaluated under standard and propagated adversarial attacks, and defended using adversarial training.
+A Multi-Layer Perceptron (MLP) is trained on the **UCI Adult Income Dataset** to predict whether a person earns more than $50K/year. The model is then attacked using standard and novel propagated adversarial attacks, defended using adversarial training, and analyzed for fairness implications.
+
+**Core novelty:** We extend FGSM and PGD with a feature dependency graph (Pearson Correlation + Mutual Information) and domain constraint enforcement — producing adversarial examples that are realistic and could pass real-world fraud detection.
+
+---
+
+## Key Results
+
+| Scenario | Accuracy | Notes |
+|---|---|---|
+| Baseline (clean) | **84%** | Meets published benchmark of 84–86% |
+| Standard FGSM (ε=0.2) | 29% | Unconstrained — unrealistic records |
+| Standard PGD (ε=0.2) | 23% | Unconstrained — unrealistic records |
+| **Propagated FGSM (ε=0.5)** | **9%** | ← Our attack · realistic · more damaging |
+| **Propagated PGD (ε=0.4)** | **12%** | ← Our strongest attack |
+| Robust model (clean) | **85%** | After adversarial training (+1pp cost) |
+| Robust + Prop-FGSM | **82%** | +73pp recovery from 9% |
+| Robust + Prop-PGD | **77%** | +65pp recovery from 12% |
+
+**Key finding:** Our constraint-aware propagated attack (9%) is more damaging than unconstrained standard FGSM (29%) while only making changes a real adversary could plausibly make — sex and race are never touched.
 
 ---
 
@@ -16,55 +35,72 @@ A Multi-Layer Perceptron (MLP) neural network is trained on the UCI Adult Income
 
 **UCI Adult Income Dataset**
 
-Files used:
-- `adult.data` (training dataset)
-- `adult.test` (testing dataset)
-
-After preprocessing:
-- Training samples: **30,162**
-- Testing samples: **15,060**
-- Features after encoding: **104**
-
-Target variable:
-- `0` → Income ≤ 50K
-- `1` → Income > 50K
+| Property | Value |
+|---|---|
+| Source | adult.data + adult.test |
+| Training samples | 30,162 |
+| Testing samples | 15,060 |
+| Features after encoding | 104 (one-hot) |
+| Target | 0 = ≤$50K · 1 = >$50K |
+| Sensitive attributes | Sex, Race (used for fairness analysis) |
+| Split | 70% train · 15% val · 15% test |
 
 ---
 
-## Model
+## Model Architecture
 
-Baseline model: **Multi-Layer Perceptron (MLP)**
+**Multi-Layer Perceptron (MLP)**
 
-Architecture:
-- Input layer: 104 features
-- Hidden layer 1: 128 neurons, ReLU
-- Dropout: 0.3
-- Hidden layer 2: 64 neurons, ReLU
-- Output layer: 2 neurons, Softmax
-- Optimizer: Adam (lr=0.001)
+```
+Input Layer     →  104 features
+FC Layer 1      →  128 neurons, ReLU
+Dropout         →  rate = 0.3
+FC Layer 2      →  64 neurons, ReLU
+Output Layer    →  2 neurons, Softmax
+```
+
+- Optimizer: Adam (lr = 0.001)
+- Loss: Cross-Entropy
+- Epochs: 200
 
 ---
 
 ## Project Structure
 
 ```
-├── attacks/
-│   ├── FGSM.py            — Fast Gradient Sign Method attack
-│   ├── PGD.py             — Projected Gradient Descent attack
-│   ├── constraints.py     — Feature constraint table (immutable/bounded/direction)
-│   └── propagation.py     — Feature dependency graph (correlation + mutual information)
+Adversarial-AttackDefense/
+│
 ├── data/
-│   ├── adult.data
-│   └── adult.test
+│   ├── adult.data              — Training dataset
+│   └── adult.test              — Testing dataset
+│
 ├── models/
-│   └── model.py           — MLP architecture
+│   └── model.py                — MLP architecture definition
+│
 ├── preprocessing/
-│   └── preprocessing.py   — Load, encode, scale, return feature_names
-├── train.py               — Train baseline MLP → model.pth
-├── evaluate.py            — Evaluate baseline + standard attacks
-├── test_propagation.py    — Test propagated attacks + feature dependency graph
-├── adversarial_train.py   — Adversarial training → model_robust.pth
-└── fairness.py            — Demographic parity gap analysis
+│   └── preprocessing.py        — Load, one-hot encode, scale, return feature_names
+│                                 Returns 5 values: X_train, X_test, y_train, y_test, feature_names
+│
+├── attacks/
+│   ├── FGSM.py                 — Fast Gradient Sign Method (standard)
+│   ├── PGD.py                  — Projected Gradient Descent (standard)
+│   ├── constraints.py          — Feature constraint table + mask builder
+│   └── propagation.py          — Dependency graph + propagated FGSM/PGD
+│
+├── templates/
+│   └── index.html              — Demo frontend (served by Flask)
+│
+├── train.py                    — Train baseline MLP → saves model.pth
+├── evaluate.py                 — Full 8-scenario evaluation + bar chart
+├── test_propagation.py         — Test propagated attacks + graph visualization
+├── adversarial_train.py        — Adversarial training → saves model_robust.pth
+├── fairness.py                 — Demographic parity gap analysis by sex
+├── plot_story.py               — 3-phase story chart (before/attack/defense)
+├── app.py                      — Flask demo server
+│
+├── model.pth                   — Saved baseline model (generated by train.py)
+├── model_robust.pth            — Saved robust model (generated by adversarial_train.py)
+└── requirements.txt
 ```
 
 ---
@@ -72,57 +108,153 @@ Architecture:
 ## Adversarial Attacks
 
 ### Standard Attacks
-| Attack | Description |
-|--------|-------------|
-| FGSM | Fast Gradient Sign Method — single-step gradient attack |
-| PGD  | Projected Gradient Descent — iterative multi-step attack |
 
-### Propagated Attacks (Milestone 3 — Core Novelty)
-| Attack | Description |
-|--------|-------------|
-| Propagated FGSM | FGSM + feature dependency propagation + constraint enforcement |
-| Propagated PGD  | PGD + final delta propagated through dependency graph + constraints |
+| Attack | File | Epsilon | Description |
+|---|---|---|---|
+| FGSM | attacks/FGSM.py | 0.2 | Single-step gradient attack |
+| PGD | attacks/PGD.py | 0.2 | Iterative multi-step attack (10 iterations) |
 
-**Feature Dependency Graph** built using:
-- **Pearson Correlation** — captures linear relationships between numerical features
-- **Mutual Information** — captures non-linear and categorical relationships
-- Combined 50/50 for a complete picture of feature dependencies
+### Propagated Attacks — Core Novelty
 
-**Feature Constraints** enforced during every attack:
-- `sex`, `race`, `native-country` → IMMUTABLE (never perturbed)
-- `age`, `education-num` → DIRECTION ONLY (can only increase)
-- `hours-per-week`, `capital-gain`, `capital-loss` → BOUNDED (clipped to valid ranges)
+| Attack | File | Epsilon | Description |
+|---|---|---|---|
+| Propagated FGSM | attacks/propagation.py | 0.5 | FGSM + constraint mask + graph propagation |
+| Propagated PGD | attacks/propagation.py | 0.4 | PGD → propagate final delta once + constraints |
 
----
+**How propagation works:**
 
-## Results
+1. Compute FGSM or PGD gradient step normally
+2. Apply constraint mask — immutable features receive zero gradient
+3. Propagate delta through the dependency graph:
+   ```
+   propagated_delta = 0.5 × delta × adjacency_matrix
+   final_delta = delta + propagated_delta
+   ```
+4. Apply domain constraints (clip age, hours, capital gain etc.)
 
-### Milestone 1 + 2 (Baseline + Standard Attacks)
-| Scenario | Accuracy |
-|----------|----------|
-| Baseline (clean) | 84% |
-| FGSM Attack | 31% |
-| PGD Attack | 24% |
-
-### Milestone 3 (Propagated Attacks)
-| Scenario | Accuracy | Notes |
-|----------|----------|-------|
-| Propagated FGSM | ~29% | Realistic attack — same damage, constraints respected |
-| Propagated PGD  | ~22% | Strongest attack — realistic + more damaging than standard |
-
-### Milestone 4 (Adversarial Training — in progress)
-| Scenario | Accuracy |
-|----------|----------|
-| Robust model (clean) | TBD |
-| Robust + Prop-FGSM | TBD |
+**Design decision for PGD:** Propagation is applied **once on the final accumulated delta**, not inside each iteration. Applying it per-iteration resets accumulated damage at each step, which weakened the attack (47% instead of 12%).
 
 ---
 
-## Bug Fix
+## Feature Dependency Graph
 
-Original `evaluate.py` called `model.train()` before FGSM attack, activating dropout during gradient computation. This produced inconsistent gradients and unreliable accuracy numbers.
+Built in `attacks/propagation.py` using two methods combined 50/50:
 
-**Fix:** Changed to `model.eval()` throughout attack generation. Gradients enabled on input via `X.requires_grad = True` inside FGSM.py.
+**Pearson Correlation (50%)** — captures linear relationships between numerical features.
+Example: age ↔ marital_Never-married (score: 0.52)
+
+**Mutual Information (50%)** — captures non-linear and categorical relationships.
+Example: workclass_Private ↔ workclass_Self-emp are mutually exclusive — MI catches this, correlation misses it.
+
+```
+Edge Weight = 0.5 × |Pearson Correlation| + 0.5 × Mutual Information
+Threshold   = 0.10  (edges below this are removed)
+```
+
+Top feature dependencies found:
+
+| Feature A | Feature B | Score |
+|---|---|---|
+| marital_Married-civ | rel_Husband | 0.90 |
+| marital_Married-civ | rel_Not-in-family | 0.55 |
+| age | marital_Never-married | 0.52 |
+| education-num | edu_Bachelors | 0.51 |
+
+---
+
+## Feature Constraints
+
+Enforced in `attacks/constraints.py` during every attack step:
+
+| Type | Features | Rule |
+|---|---|---|
+| **IMMUTABLE** | sex, race, native-country | Zero gradient — never perturbed |
+| **DIRECTION** | age, education-num | Can only increase |
+| **BOUNDED** | hours-per-week | Clipped to [1, 99] |
+| **BOUNDED** | capital-gain | Clipped to [0, 99999] |
+| **BOUNDED** | capital-loss | Clipped to [0, 4356] |
+| **MUTABLE** | workclass, occupation, marital-status | One-hot clipped to [0, 1] |
+
+---
+
+## Defense — Adversarial Training
+
+Implemented in `adversarial_train.py`. Retrains the model on a mixed batch:
+
+| Batch Component | Share | Epsilon |
+|---|---|---|
+| Clean examples | 50% | — |
+| Standard FGSM | 25% | 0.2 |
+| Propagated FGSM | 25% | 0.3 |
+
+**Key design decisions:**
+
+- Training ε (0.3) < Evaluation ε (0.5) — honest stress test, not inflated numbers
+- 50/25/25 mix prevents overfitting to one attack pattern
+- model.eval() during attack generation — no dropout noise in gradients
+
+**Bug found and fixed:** Training on ONLY propagated FGSM caused the model to score 99% under that attack — higher than clean data. The model memorized one specific attack pattern. Fixed by using the 50/25/25 mix.
+
+---
+
+## Fairness Analysis
+
+Implemented in `fairness.py`.
+
+**Metric:** Demographic Parity Gap by Sex
+```
+Gap = |P(predicted >50K | Male) − P(predicted >50K | Female)|
+Lower gap = more fair
+```
+
+| Scenario | Accuracy | Gap | Male Rate | Female Rate |
+|---|---|---|---|---|
+| Baseline (clean) | 84% | 0.19 | 28% | 9% |
+| Baseline + Std FGSM | 29% | 0.10 | 55% | 45% |
+| Baseline + Prop-FGSM | 9% | 0.04 | 74% | 70% |
+| Robust (clean) | 85% | 0.18 | 26% | 8% |
+| Robust + Prop-FGSM | 82% | 0.24 | 36% | 13% |
+
+**Finding:** Adversarial training slightly improved fairness on clean data (0.19 → 0.18). Under attack, the gap rises to 0.24 — the robust model stays accurate and therefore retains the dataset's existing gender bias. This is the fairness-robustness tradeoff. We report it — we do not attempt to solve it.
+
+---
+
+## Bugs Fixed
+
+**Bug 1 — model.train() during attack generation (Professor feedback)**
+- Calling `model.train()` before FGSM activated dropout, producing noisy gradients and wrong accuracy numbers (FGSM showed 25%, real was 29%; PGD showed 45%, real was 23%)
+- Fix: `model.eval()` throughout attack generation. Gradients enabled on input via `X.requires_grad = True` inside FGSM.py
+
+**Bug 2 — Propagated PGD weaker than standard PGD**
+- Applying propagation inside every PGD iteration reset accumulated damage each step — attack result was 47% (weaker than standard PGD at 23%)
+- Fix: Propagate ONCE on final accumulated delta after all iterations
+
+**Bug 3 — Robust model scored 99% under attack**
+- Adversarial training on only propagated FGSM caused memorization of that attack pattern
+- Fix: 50/25/25 batch mix with training ε=0.3, evaluation ε=0.5
+
+---
+
+## Live Demo
+
+A Flask web app that demonstrates all three states on a real test sample.
+
+**Setup:**
+```bash
+pip install flask
+python app.py
+# Open http://localhost:5000
+```
+
+**What the demo shows:**
+- Step 1: Baseline model prediction on a real person (confidence %)
+- Step 2: Propagated FGSM attack flips the prediction
+- Step 3: Robust model recovers the correct prediction
+- Feature change cards showing exactly what the attack modified
+- Accuracy bars for all three states across full test set
+- Protected features (sex, race, native-country) shown as never touched
+
+**Note:** The app precomputes all attack results at startup (~1–2 min). Once ready, all demo interactions are instant.
 
 ---
 
@@ -139,6 +271,16 @@ pandas
 torch
 matplotlib
 scikit-learn
+flask
+```
+
+**Python version:** Use Python 3.11. PyTorch does not support Python 3.14 yet.
+
+```bash
+# Windows with Python 3.11 installed separately
+py -3.11 -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+py -3.11 -m pip install flask scikit-learn pandas numpy matplotlib
+py -3.11 app.py
 ```
 
 ---
@@ -146,23 +288,27 @@ scikit-learn
 ## How to Run
 
 ```bash
-# Step 1 — Train baseline model
+# Step 1 — Train baseline MLP (saves model.pth)
 python train.py
 
-# Step 2 — Evaluate standard attacks
-python evaluate.py
-
-# Step 3 — Test propagated attacks + feature dependency graph
+# Step 2 — Test propagated attacks + dependency graph
 python test_propagation.py
 
-# Step 4 — Train robust model (adversarial training)
+# Step 3 — Full 8-scenario evaluation + bar chart
+python evaluate.py
+
+# Step 4 — Adversarial training (saves model_robust.pth)
 python adversarial_train.py
 
-# Step 5 — Full evaluation (all 8 scenarios)
-python evaluate.py   # updated version
-
-# Step 6 — Fairness analysis
+# Step 5 — Fairness analysis
 python fairness.py
+
+# Step 6 — 3-phase story chart
+python plot_story.py
+
+# Step 7 — Live demo
+python app.py
+# Open http://localhost:5000
 ```
 
 ---
@@ -170,9 +316,23 @@ python fairness.py
 ## Milestones
 
 | Milestone | Task | Status |
-|-----------|------|--------|
-| 1 | Data preprocessing + baseline MLP (≥84% accuracy) | COMPLETE |
-| 2 | FGSM + PGD attacks implemented | COMPLETE |
-| 3 | Constraint-aware propagated attacks (correlation + MI graph) | COMPLETE |
-| 4 | Adversarial training + fairness analysis | COMPLETE |
-| 5 | Final evaluation + demo video | PLANNED |
+|---|---|---|
+| 1 | Data preprocessing + baseline MLP (≥84% accuracy) | ✅ Complete |
+| 2 | FGSM + PGD attacks implemented | ✅ Complete |
+| 3 | Constraint-aware propagated attacks (Corr + MI graph) | ✅ Complete |
+| 4 | Adversarial training + fairness analysis | ✅ Complete |
+| 5 | Final evaluation + demo video | ✅ Complete |
+
+---
+
+## Scientific Claims
+
+1. **Realistic attacks are more damaging than unconstrained attacks.** Propagated FGSM (ε=0.5) achieves 9% accuracy — lower than standard FGSM (29%) at a weaker epsilon, despite enforcing all domain constraints.
+
+2. **Adversarial training generalizes to realistic attacks with minimal clean accuracy cost.** Recovery from 9% to 82% against the same realistic attack, with only +1pp clean accuracy cost (84% → 85%).
+
+3. **Robustness and fairness trade off under attack.** A model that stays accurate under attack retains the dataset's existing gender bias (gap rises from 0.19 to 0.24), while an undefended model appears fairer only because it fails equally for everyone (gap drops to 0.04 at 9% accuracy).
+
+---
+
+*Team Immortals · Shaan Thakkar & Neel Kalwar · Secure and Private AI · Georgia State University · 2026*
